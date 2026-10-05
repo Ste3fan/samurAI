@@ -2,12 +2,12 @@
   <img src="assets/samurai-logo-256.png" alt="samurAI logo" width="180">
 </p>
 
-<h1 align="center">samurAI 1.0</h1>
+<h1 align="center">SamurAI 1.0</h1>
 
 <p align="center"><b>A Java framework for multi-provider AI agents, orchestration and cost tracking —
 from plain Java, from a single XML file, or from a desktop studio.</b></p>
 
-samurAI lets you build AI-powered applications in Java without locking yourself to one AI vendor. You chain **agents** —
+SamurAI lets you build AI-powered applications in Java without locking yourself to one AI vendor. You chain **agents** —
 some that call a language model, some that run commands, wait, call HTTP endpoints or run Java code with **no model at
 all** — into workflows. An **orchestrator** runs them synchronously, asynchronously or on a schedule. On every call it
 picks the cheapest model that is good enough for the task, across all the providers you configured. Every token and
