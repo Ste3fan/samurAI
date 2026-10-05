@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A samurAI application defined only in XML: customer support + reports + a system check.
+  Run it from the directory that contains your .env file (API keys):
+    java -jar samurai-studio-1.0-all.jar list examples/support/samurai.xml
+    java -jar samurai-studio-1.0-all.jar run  examples/support/samurai.xml system
+    java -jar samurai-studio-1.0-all.jar run  examples/support/samurai.xml support "The product arrived broken"
+-->
+<samurai xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="samurai.xsd"
+         version="1.0" name="support">
+
+  <config>
+    <!-- keys come from .env / the environment — never written here -->
+    <provider name="anthropic" type="anthropic" apiKey="${ANTHROPIC_API_KEY:}"/>
+    <provider name="gemini" type="gemini" apiKey="${GEMINI_API_KEY:}"/>
+
+    <model alias="gemini-flash-free" provider="gemini" model="gemini-flash-latest" freeTier="true" quality="8"
+           purposes="CLASSIFICATION,EXTRACTION,SUMMARIZATION,TRANSLATION,CHAT"/>
+    <model alias="claude-haiku" provider="anthropic" model="claude-haiku-4-5" inputPrice="1.00" outputPrice="5.00"
+           quality="7" purposes="CLASSIFICATION,EXTRACTION,SUMMARIZATION,CHAT"/>
+    <model alias="claude-sonnet" provider="anthropic" model="claude-sonnet-5-5" inputPrice="2.00" outputPrice="10.00"
+           quality="8" purposes="SUMMARIZATION,CHAT,CODE,REASONING,CREATIVE"/>
+
+    <routing><purpose name="reasoning" tolerance="1"/></routing>
+    <cost factor="1" currency="USD"><ledger file="./data/costs.jsonl"/></cost>
+    <orchestrator maxRunCost="0.10"/>
+    <security>
+      <commands allow="date,uptime"/>
+      <guardrails promptInjection="true" piiRedaction="true"/>
+    </security>
+  </config>
+
+  <agents>
+    <llm name="classify" purpose="CLASSIFICATION" outputVar="category" maxTokens="10" temperature="0">
+      <system>Answer with a single word.</system>
+      <prompt>
+        Classify the customer's message: COMPLAINT, ORDER or QUESTION.
+        {{input}}
+      </prompt>
+    </llm>
+    <llm name="complaint-reply" promptFile="tasks/complaint-reply.md" maxTokens="400"/>
+    <llm name="general-reply" maxTokens="300">
+      <prompt>Reply briefly and politely to the customer's message: {{runInput}}</prompt>
+    </llm>
+    <approval name="approval" title="Reply to the customer (category {{category}})" waitFor="8h"/>
+
+    <!-- every file in tasks/reports becomes a workflow: report-daily, report-risks -->
+    <llm-dir path="tasks/reports" pattern="*.md" prefix="report-" workflows="true" maxTokens="500"/>
+
+    <command name="clock" command="date"/>
+    <command name="load" command="uptime"/>
+    <wait name="pause" duration="500ms"/>
+  </agents>
+
+  <workflows>
+    <workflow name="support" description="Classifies the message and drafts a reply; complaints need human approval">
+      <ref agent="classify"/>
+      <router selectVar="category">
+        <route key="complaint"><ref agent="complaint-reply"/><ref agent="approval"/></route>
+        <otherwise><ref agent="general-reply"/></otherwise>
+      </router>
+    </workflow>
+    <workflow name="system" description="System check with no language model (cost 0)">
+      <parallel name="status"><ref agent="clock"/><ref agent="load"/></parallel>
+      <ref agent="pause"/>
+    </workflow>
+  </workflows>
+</samurai>

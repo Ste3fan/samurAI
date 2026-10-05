@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The "collector" sub-orchestrator: gathers data from the internet and stores it. No language model (cost 0).
+  It has its own threads, configuration and schedules, and it is started, stopped and supervised by the main
+  orchestrator (../samurai.xml).
+-->
+<samurai xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="samurai.xsd" version="1.0">
+
+  <config>
+    <!-- the same directory as the main orchestrator's store (paths are relative to this file) -->
+    <stores>
+      <store name="rates" dir="../data/rates" format="jsonl" maxRecords="5000"/>
+    </stores>
+    <orchestrator maxConcurrentRuns="2"/>
+  </config>
+
+  <agents>
+    <!-- public source, no key: ECB reference rates -->
+    <http name="download" url="https://api.frankfurter.dev/v1/latest?base=EUR&amp;symbols=RON,USD,GBP,CHF"
+          allowHosts="api.frankfurter.dev" requestTimeout="20s" retries="3" retryBackoff="5s"/>
+    <store-write name="save" store="rates" dataset="eur"/>
+  </agents>
+
+  <workflows>
+    <workflow name="rates" description="Downloads the EUR exchange rates and stores them">
+      <ref agent="download"/>
+      <ref agent="save"/>
+    </workflow>
+  </workflows>
+
+  <schedules>
+    <schedule workflow="rates" every="1h" clientId="internal" userId="collector" roles="system"/>
+  </schedules>
+</samurai>

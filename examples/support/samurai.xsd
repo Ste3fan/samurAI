@@ -1,0 +1,392 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Schema fișierelor XML samurAI (versiunea 1.0).
+  Legătura în fișier, pentru completare automată în IDE:
+    <samurai xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="samurai.xsd" version="1.0">
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+    <!-- ============================================================ rădăcina -->
+    <xs:element name="samurai">
+        <xs:complexType>
+            <xs:all>
+                <xs:element name="config" type="configType" minOccurs="0"/>
+                <xs:element name="agents" type="agentsType" minOccurs="0"/>
+                <xs:element name="workflows" type="workflowsType" minOccurs="0"/>
+                <xs:element name="schedules" type="schedulesType" minOccurs="0"/>
+                <xs:element name="orchestrators" type="orchestratorsType" minOccurs="0"/>
+            </xs:all>
+            <xs:attribute name="version" type="xs:string"/>
+            <xs:attribute name="name" type="xs:string"/>
+            <xs:anyAttribute namespace="http://www.w3.org/2001/XMLSchema-instance" processContents="skip"/>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- Configurarea: aceleași chei ca samurai.properties (vezi TUTORIAL-CONFIGURARE.md); structură liberă. -->
+    <xs:complexType name="configType">
+        <xs:sequence>
+            <xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <!-- ============================================================ tipuri simple -->
+    <xs:simpleType name="duration">
+        <xs:restriction base="xs:string">
+            <xs:pattern value="\d+(ms|s|m|h|d)?|P.*"/>
+        </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType name="purpose">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="AUTO"/><xs:enumeration value="CLASSIFICATION"/><xs:enumeration value="EXTRACTION"/>
+            <xs:enumeration value="SUMMARIZATION"/><xs:enumeration value="TRANSLATION"/><xs:enumeration value="CHAT"/>
+            <xs:enumeration value="CODE"/><xs:enumeration value="REASONING"/><xs:enumeration value="CREATIVE"/>
+            <xs:enumeration value="EMBEDDING"/><xs:enumeration value="GENERAL"/>
+        </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType name="strategy">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="OPTIMAL"/><xs:enumeration value="CHEAPEST"/><xs:enumeration value="BALANCED"/>
+            <xs:enumeration value="BEST_QUALITY"/><xs:enumeration value="LOCAL_FIRST"/><xs:enumeration value="LOCAL_ONLY"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- text direct sau file="cale/relativa" -->
+    <xs:complexType name="textOrFile">
+        <xs:simpleContent>
+            <xs:extension base="xs:string">
+                <xs:attribute name="file" type="xs:string"/>
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+    <xs:complexType name="namedText">
+        <xs:simpleContent>
+            <xs:extension base="xs:string">
+                <xs:attribute name="name" type="xs:string" use="required"/>
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <!-- atribute comune tuturor agenților -->
+    <xs:attributeGroup name="common">
+        <xs:attribute name="name" type="xs:string"/>
+        <xs:attribute name="description" type="xs:string"/>
+        <xs:attribute name="retries" type="xs:positiveInteger"/>
+        <xs:attribute name="retryBackoff" type="duration"/>
+        <xs:attribute name="timeout" type="duration"/>
+        <xs:attribute name="outputVar" type="xs:string"/>
+        <xs:attribute name="inputGuardrails" type="xs:string"/>
+        <xs:attribute name="outputGuardrails" type="xs:string"/>
+        <xs:attribute name="workflow" type="xs:boolean"/>
+    </xs:attributeGroup>
+    <xs:attributeGroup name="llmOptions">
+        <xs:attribute name="purpose" type="purpose"/>
+        <xs:attribute name="strategy" type="strategy"/>
+        <xs:attribute name="minQuality" type="xs:positiveInteger"/>
+        <xs:attribute name="model" type="xs:string"/>
+        <xs:attribute name="providers" type="xs:string"/>
+        <xs:attribute name="temperature" type="xs:decimal"/>
+        <xs:attribute name="maxTokens" type="xs:positiveInteger"/>
+        <xs:attribute name="jsonMode" type="xs:boolean"/>
+        <xs:attribute name="allowFreeTier" type="xs:boolean"/>
+        <xs:attribute name="acceptRegex" type="xs:string"/>
+        <xs:attribute name="maxEscalations" type="xs:nonNegativeInteger"/>
+    </xs:attributeGroup>
+
+    <!-- ============================================================ agenți -->
+    <xs:group name="agent">
+        <xs:choice>
+            <xs:element name="llm" type="llmType"/>
+            <xs:element name="tool-agent" type="toolAgentType"/>
+            <xs:element name="command" type="commandType"/>
+            <xs:element name="wait" type="waitType"/>
+            <xs:element name="http" type="httpType"/>
+            <xs:element name="function" type="functionType"/>
+            <xs:element name="approval" type="approvalType"/>
+            <xs:element name="rag" type="ragType"/>
+            <xs:element name="ingest" type="ingestType"/>
+            <xs:element name="sequence" type="sequenceType"/>
+            <xs:element name="parallel" type="parallelType"/>
+            <xs:element name="router" type="routerType"/>
+            <xs:element name="loop" type="loopType"/>
+            <xs:element name="fallback" type="compositeType"/>
+            <xs:element name="ref" type="refType"/>
+            <xs:element name="orchestrator-call" type="orchestratorCallType"/>
+            <xs:element name="store-write" type="storeWriteType"/>
+            <xs:element name="store-read" type="storeReadType"/>
+        </xs:choice>
+    </xs:group>
+
+    <!-- rulează un flux al unui suborchestrator și îi întoarce rezultatul -->
+    <xs:complexType name="orchestratorCallType">
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="orchestrator" type="xs:string" use="required"/>
+        <xs:attribute name="flow" type="xs:string" use="required"/>
+        <xs:attribute name="passVars" type="xs:boolean"/>
+    </xs:complexType>
+    <!-- adaugă intrarea într-un set de date al unui depozit (<config><stores>) și o transmite mai departe -->
+    <xs:complexType name="storeWriteType">
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="store" type="xs:string" use="required"/>
+        <xs:attribute name="dataset" type="xs:string" use="required"/>
+    </xs:complexType>
+    <!-- citește ultimele înregistrări dintr-un set de date -->
+    <xs:complexType name="storeReadType">
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="store" type="xs:string" use="required"/>
+        <xs:attribute name="dataset" type="xs:string" use="required"/>
+        <xs:attribute name="last" type="xs:nonNegativeInteger"/>
+        <xs:attribute name="maxAge" type="duration"/>
+        <xs:attribute name="ifEmpty" type="xs:string"/>
+    </xs:complexType>
+
+    <!-- ============================================================ suborchestratori -->
+    <xs:complexType name="orchestratorsType">
+        <xs:sequence>
+            <xs:element name="orchestrator" maxOccurs="unbounded">
+                <xs:complexType>
+                    <xs:attribute name="name" type="xs:string" use="required"/>
+                    <xs:attribute name="file" type="xs:string" use="required"/>
+                    <xs:attribute name="autostart" type="xs:boolean"/>
+                    <xs:attribute name="restart">
+                        <xs:simpleType>
+                            <xs:restriction base="xs:string">
+                                <xs:enumeration value="never"/><xs:enumeration value="onFailure"/>
+                            </xs:restriction>
+                        </xs:simpleType>
+                    </xs:attribute>
+                    <xs:attribute name="maxRestarts" type="xs:nonNegativeInteger"/>
+                    <xs:attribute name="backoff" type="duration"/>
+                    <xs:attribute name="maxBackoff" type="duration"/>
+                    <xs:attribute name="budget" type="xs:decimal"/>
+                    <xs:attribute name="budgetPeriod">
+                        <xs:simpleType>
+                            <xs:restriction base="xs:string">
+                                <xs:enumeration value="DAY"/><xs:enumeration value="MONTH"/><xs:enumeration value="TOTAL"/>
+                            </xs:restriction>
+                        </xs:simpleType>
+                    </xs:attribute>
+                </xs:complexType>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="agentsType">
+        <xs:choice minOccurs="0" maxOccurs="unbounded">
+            <xs:group ref="agent"/>
+            <xs:element name="llm-dir" type="llmDirType"/>
+        </xs:choice>
+    </xs:complexType>
+
+    <xs:complexType name="llmType">
+        <xs:all>
+            <xs:element name="system" type="textOrFile" minOccurs="0"/>
+            <xs:element name="prompt" type="textOrFile" minOccurs="0"/>
+        </xs:all>
+        <xs:attributeGroup ref="common"/>
+        <xs:attributeGroup ref="llmOptions"/>
+        <xs:attribute name="promptFile" type="xs:string"/>
+        <xs:attribute name="systemFile" type="xs:string"/>
+    </xs:complexType>
+
+    <xs:complexType name="llmDirType">
+        <xs:attributeGroup ref="llmOptions"/>
+        <xs:attribute name="path" type="xs:string" use="required"/>
+        <xs:attribute name="pattern" type="xs:string"/>
+        <xs:attribute name="prefix" type="xs:string"/>
+        <xs:attribute name="system" type="xs:string"/>
+        <xs:attribute name="workflows" type="xs:boolean"/>
+        <xs:attribute name="retries" type="xs:positiveInteger"/>
+        <xs:attribute name="timeout" type="duration"/>
+        <xs:attribute name="inputGuardrails" type="xs:string"/>
+        <xs:attribute name="outputGuardrails" type="xs:string"/>
+    </xs:complexType>
+
+    <xs:complexType name="toolAgentType">
+        <xs:sequence>
+            <xs:element name="system" type="textOrFile" minOccurs="0"/>
+            <xs:element name="prompt" type="textOrFile" minOccurs="0"/>
+            <xs:element name="tool" type="toolType" maxOccurs="unbounded"/>
+        </xs:sequence>
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="purpose" type="purpose"/>
+        <xs:attribute name="strategy" type="strategy"/>
+        <xs:attribute name="maxSteps" type="xs:positiveInteger"/>
+        <xs:attribute name="allowFreeTier" type="xs:boolean"/>
+    </xs:complexType>
+    <xs:complexType name="toolType">
+        <xs:sequence>
+            <xs:element name="param" type="namedText" minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+        <xs:attribute name="name" type="xs:string"/>
+        <xs:attribute name="description" type="xs:string"/>
+        <xs:attribute name="ref" type="xs:string"/>
+        <xs:attribute name="agent" type="xs:string"/>
+        <xs:attribute name="class" type="xs:string"/>
+        <xs:attribute name="approval" type="xs:boolean"/>
+    </xs:complexType>
+
+    <xs:complexType name="commandType">
+        <xs:sequence>
+            <xs:element name="arg" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+            <xs:element name="env" type="namedText" minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="command" type="xs:string"/>
+        <xs:attribute name="workDir" type="xs:string"/>
+        <xs:attribute name="processTimeout" type="duration"/>
+        <xs:attribute name="mergeStderr" type="xs:boolean"/>
+        <xs:attribute name="pipeInput" type="xs:boolean"/>
+        <xs:attribute name="successCodes" type="xs:string"/>
+    </xs:complexType>
+
+    <xs:complexType name="waitType">
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="duration" type="duration"/>
+        <xs:attribute name="untilTime" type="xs:string"/>
+        <xs:attribute name="untilFile" type="xs:string"/>
+        <xs:attribute name="untilPort" type="xs:string"/>
+        <xs:attribute name="untilVar" type="xs:string"/>
+        <xs:attribute name="maxWait" type="duration"/>
+        <xs:attribute name="pollInterval" type="duration"/>
+        <xs:attribute name="failOnTimeout" type="xs:boolean"/>
+    </xs:complexType>
+
+    <xs:complexType name="httpType">
+        <xs:sequence>
+            <xs:element name="header" type="namedText" minOccurs="0" maxOccurs="unbounded"/>
+            <xs:element name="body" type="textOrFile" minOccurs="0"/>
+        </xs:sequence>
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="method" type="xs:string"/>
+        <xs:attribute name="url" type="xs:string" use="required"/>
+        <xs:attribute name="body" type="xs:string"/>
+        <xs:attribute name="allowHosts" type="xs:string"/>
+        <xs:attribute name="allowPrivateNetwork" type="xs:boolean"/>
+        <xs:attribute name="requestTimeout" type="duration"/>
+        <xs:attribute name="maxResponseChars" type="xs:positiveInteger"/>
+    </xs:complexType>
+
+    <xs:complexType name="functionType">
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="class" type="xs:string"/>
+        <xs:attribute name="ref" type="xs:string"/>
+    </xs:complexType>
+
+    <xs:complexType name="approvalType">
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="title" type="xs:string"/>
+        <xs:attribute name="waitFor" type="duration"/>
+    </xs:complexType>
+
+    <xs:complexType name="ragType">
+        <xs:sequence>
+            <xs:element name="system" type="textOrFile" minOccurs="0"/>
+        </xs:sequence>
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="topK" type="xs:positiveInteger"/>
+        <xs:attribute name="minScore" type="xs:decimal"/>
+        <xs:attribute name="namespace" type="xs:string"/>
+        <xs:attribute name="purpose" type="purpose"/>
+        <xs:attribute name="notFound" type="xs:string"/>
+        <xs:attribute name="allowFreeTier" type="xs:boolean"/>
+    </xs:complexType>
+
+    <xs:complexType name="ingestType">
+        <xs:sequence>
+            <xs:element name="metadata" type="namedText" minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="docId" type="xs:string"/>
+        <xs:attribute name="namespace" type="xs:string"/>
+    </xs:complexType>
+
+    <xs:complexType name="compositeType">
+        <xs:sequence>
+            <xs:group ref="agent" maxOccurs="unbounded"/>
+        </xs:sequence>
+        <xs:attributeGroup ref="common"/>
+    </xs:complexType>
+    <xs:complexType name="sequenceType">
+        <xs:complexContent>
+            <xs:extension base="compositeType">
+                <xs:attribute name="continueOnError" type="xs:boolean"/>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+    <xs:complexType name="parallelType">
+        <xs:complexContent>
+            <xs:extension base="compositeType">
+                <xs:attribute name="requireAll" type="xs:boolean"/>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+    <xs:complexType name="loopType">
+        <xs:complexContent>
+            <xs:extension base="compositeType">
+                <xs:attribute name="untilRegex" type="xs:string" use="required"/>
+                <xs:attribute name="maxIterations" type="xs:positiveInteger"/>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+
+    <xs:complexType name="routeType">
+        <xs:sequence>
+            <xs:group ref="agent" maxOccurs="unbounded"/>
+        </xs:sequence>
+        <xs:attribute name="key" type="xs:string" use="required"/>
+    </xs:complexType>
+    <xs:complexType name="otherwiseType">
+        <xs:sequence>
+            <xs:group ref="agent" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+    <xs:complexType name="routerType">
+        <xs:sequence>
+            <xs:element name="route" type="routeType" maxOccurs="unbounded"/>
+            <xs:element name="otherwise" type="otherwiseType" minOccurs="0"/>
+        </xs:sequence>
+        <xs:attributeGroup ref="common"/>
+        <xs:attribute name="selectVar" type="xs:string"/>
+    </xs:complexType>
+
+    <xs:complexType name="refType">
+        <xs:attribute name="agent" type="xs:string" use="required"/>
+    </xs:complexType>
+
+    <!-- ============================================================ fluxuri și programări -->
+    <xs:complexType name="workflowsType">
+        <xs:sequence>
+            <xs:element name="workflow" maxOccurs="unbounded">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:group ref="agent" minOccurs="0" maxOccurs="unbounded"/>
+                    </xs:sequence>
+                    <xs:attribute name="name" type="xs:string" use="required"/>
+                    <xs:attribute name="agent" type="xs:string"/>
+                    <xs:attribute name="description" type="xs:string"/>
+                </xs:complexType>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="schedulesType">
+        <xs:sequence>
+            <xs:element name="schedule" maxOccurs="unbounded">
+                <xs:complexType>
+                    <xs:attribute name="workflow" type="xs:string" use="required"/>
+                    <xs:attribute name="every" type="duration"/>
+                    <xs:attribute name="delay" type="duration"/>
+                    <xs:attribute name="daily" type="xs:string"/>
+                    <xs:attribute name="maxRuns" type="xs:positiveInteger"/>
+                    <xs:attribute name="initialDelay" type="duration"/>
+                    <xs:attribute name="allowOverlap" type="xs:boolean"/>
+                    <xs:attribute name="input" type="xs:string"/>
+                    <xs:attribute name="sessionId" type="xs:string"/>
+                    <xs:attribute name="clientId" type="xs:string"/>
+                    <xs:attribute name="userId" type="xs:string"/>
+                    <xs:attribute name="roles" type="xs:string"/>
+                </xs:complexType>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+</xs:schema>

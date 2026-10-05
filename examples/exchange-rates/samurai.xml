@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A main orchestrator + a collector sub-orchestrator, defined only in XML.
+
+  "collector" (collector/collector.xml) runs on its own threads: every hour it downloads the ECB reference exchange
+  rates for EUR from the internet (a public source, no key needed) and appends them to the "rates" store
+  (data/rates/eur.jsonl). The main orchestrator's workflows use the collected data, and the main orchestrator stays
+  responsible for everything: start/stop, cost totals, budget, audit, supervision.
+
+  Run it:
+    java -jar samurai-studio-1.0-all.jar list  examples/exchange-rates/samurai.xml
+    java -jar samurai-studio-1.0-all.jar run   examples/exchange-rates/samurai.xml collector/rates   (collect now)
+    java -jar samurai-studio-1.0-all.jar run   examples/exchange-rates/samurai.xml history           (collected data, no model)
+    java -jar samurai-studio-1.0-all.jar run   examples/exchange-rates/samurai.xml analysis          (uses a model; may cost)
+    java -jar samurai-studio-1.0-all.jar serve examples/exchange-rates/samurai.xml                  (REST + schedules + dashboard;
+                                                                                                    add the port option for another port)
+-->
+<samurai xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="samurai.xsd"
+         version="1.0" name="main">
+
+  <config>
+    <provider name="anthropic" type="anthropic" apiKey="${ANTHROPIC_API_KEY:}"/>
+    <provider name="gemini" type="gemini" apiKey="${GEMINI_API_KEY:}"/>
+    <model alias="gemini-flash-free" provider="gemini" model="gemini-flash-latest" freeTier="true" quality="8"
+           purposes="SUMMARIZATION,EXTRACTION,CHAT"/>
+    <model alias="claude-haiku" provider="anthropic" model="claude-haiku-4-5" inputPrice="1.00" outputPrice="5.00"
+           quality="7" purposes="SUMMARIZATION,EXTRACTION,CHAT,REASONING"/>
+
+    <orchestrator maxRunCost="0.05"/>
+    <cost factor="1" currency="USD"><ledger file="./data/costs.jsonl"/></cost>
+    <security><audit file="./data/audit.jsonl"/></security>
+
+    <!-- the shared store: the sub-orchestrator uses the same directory -->
+    <stores>
+      <store name="rates" dir="data/rates" format="jsonl" maxRecords="5000"/>
+    </stores>
+  </config>
+
+  <!-- the sub-orchestrator: restarted automatically after failures (the source may be briefly unavailable),
+       at most 1 USD per month (it uses no model here, so it costs 0) -->
+  <orchestrators>
+    <orchestrator name="collector" file="collector/collector.xml"
+                  restart="onFailure" maxRestarts="5" backoff="1m" maxBackoff="30m"
+                  budget="1" budgetPeriod="MONTH"/>
+  </orchestrators>
+
+  <agents>
+    <store-read name="latest" store="rates" dataset="eur" last="24"
+                ifEmpty="No data yet. Run: run ... collector/rates"/>
+
+    <llm name="analyse" purpose="SUMMARIZATION" maxTokens="400">
+      <system>You are a financial analyst. Answer briefly, based only on the data you receive.</system>
+      <prompt>
+        Below are EUR exchange rates collected periodically (JSON; _ts = collection time,
+        date = ECB publication date). Describe the evolution of RON, USD and GBP in at most 3 bullet points.
+        If there is only one day of data, say so and give the values.
+
+        {{input}}
+      </prompt>
+    </llm>
+
+    <!-- runs the sub-orchestrator's "rates" workflow now (its cost is added to the current run) -->
+    <orchestrator-call name="collect-now" orchestrator="collector" flow="rates"/>
+  </agents>
+
+  <workflows>
+    <workflow name="history" description="Data gathered by the collector (no model, cost 0)" agent="latest"/>
+    <workflow name="analysis" description="Analysis of the exchange-rate trend">
+      <ref agent="latest"/>
+      <ref agent="analyse"/>
+    </workflow>
+    <workflow name="refresh-and-analyse" description="Collects now, then analyses">
+      <ref agent="collect-now"/>
+      <ref agent="latest"/>
+      <ref agent="analyse"/>
+    </workflow>
+  </workflows>
+</samurai>
